@@ -1,0 +1,1138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SpaceVest - Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #121212;
+            color: #E5E7EB;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        .auth-container, .modal-content, .profile-section, .settings-list > div, .admin-section {
+            background-color: #1F2937;
+        }
+        .form-input {
+            background-color: #374151;
+            border: 1px solid #4B5563;
+        }
+        .submit-btn, .verify-btn {
+            background: linear-gradient(105deg, #FFD700, #FBBF24, #F59E0B);
+            color: #1F2937;
+        }
+        .submit-btn:disabled, .verify-btn:disabled {
+            background: #4B5563;
+            color: #9CA3AF;
+            cursor: not-allowed;
+        }
+        .wallet-card {
+            background: linear-gradient(105deg, #FFD700, #FBBF24, #F59E0B);
+            position: relative;
+            overflow: hidden;
+        }
+        .wallet-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 400'%3E%3Cpath fill='rgba(255, 255, 255, 0.05)' d='M 0 100 C 200 150 400 50 600 100 S 800 150 800 100 V 400 H 0 Z'/%3E%3Cpath fill='rgba(255, 255, 255, 0.08)' d='M 0 200 C 150 280 350 120 550 200 S 800 120 800 200 V 400 H 0 Z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-size: cover;
+            opacity: 0.5;
+        }
+        .action-item, .settings-item {
+            background-color: #1F2937;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .action-item:hover, .settings-item:hover {
+            background-color: #374151;
+        }
+        .bottom-nav {
+            background-color: #1F2937;
+            transition: background-color 0.3s;
+        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* Light Mode */
+        body.light-mode { background-color: #F3F4F6; color: #1F2937; }
+        .light-mode .auth-container, .light-mode .modal-content, .light-mode .profile-section, .light-mode .settings-list > div, .light-mode .action-item, .light-mode .settings-item, .light-mode .bottom-nav, .light-mode .admin-section { background-color: #FFFFFF; border: 1px solid #E5E7EB; }
+        .light-mode .form-input { background-color: #F3F4F6; border-color: #D1D5DB; }
+        .light-mode #username-home, .light-mode #username-profile, .light-mode h2, .light-mode h3, .light-mode h4, .light-mode .font-bold { color: #111827; }
+        .light-mode .text-gray-400 { color: #6B7280; }
+        .light-mode .text-gray-300 { color: #4B5563; }
+        .light-mode .text-gray-500 { color: #9CA3AF; }
+        .light-mode .border-gray-600 { border-color: #E5E7EB; }
+        .light-mode .border-gray-700 { border-color: #D1D5DB; }
+        
+        /* Chat bubble styles */
+        .chat-bubble { max-width: 75%; }
+        .chat-bubble.sent { background-color: #FBBF24; color: #1F2937; }
+        .chat-bubble.received { background-color: #374151; }
+        .light-mode .chat-bubble.received { background-color: #E5E7EB; }
+        
+        /* Tab styles */
+        .tab-btn { border-bottom: 2px solid transparent; }
+        .tab-btn.active { border-bottom-color: #FBBF24; color: #FBBF24; }
+        .light-mode .tab-btn.active { color: #F59E0B; border-bottom-color: #F59E0B; }
+
+         /* Marquee Styles */
+        .marquee-container {
+            white-space: nowrap;
+        }
+        .marquee-content {
+            animation: marquee 60s linear infinite; /* Increased duration for more content */
+            display: inline-block;
+        }
+        .marquee-item {
+            display: inline-flex;
+            align-items: center;
+            margin-right: 2.5rem; /* 40px */
+        }
+        @keyframes marquee {
+            0% { transform: translateX(0%); }
+            100% { transform: translateX(-50%); } /* Animate to -50% because content is duplicated */
+        }
+        .marquee-container:hover .marquee-content {
+            animation-play-state: paused;
+        }
+
+        /* Notification Badge */
+        .notification-badge {
+            position: absolute;
+            top: -2px;
+            right: -2px;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: #ef4444; /* red-500 */
+            border: 1px solid #1F2937;
+        }
+    </style>
+</head>
+<body class="max-w-md mx-auto p-4 min-h-screen" style="padding-bottom: 80px;">
+    
+    <div id="app-loader" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50">
+        <i class="fas fa-spinner fa-spin text-white text-4xl"></i>
+    </div>
+    
+    <div id="auth-error" class="fixed top-5 left-1/2 -translate-x-1/2 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg hidden z-50"></div>
+
+    <header class="flex justify-between items-center py-4">
+        <div class="flex items-center gap-3">
+            <div class="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center">
+                <i class="fa-solid fa-face-meh text-2xl text-gray-700"></i>
+            </div>
+            <div>
+                <p class="text-sm text-gray-400">Welcome back,</p>
+                <div class="flex items-center gap-1">
+                    <h1 id="username-home" class="font-bold text-lg">{{ user.username }}</h1>
+                    <i class="fas fa-check-circle text-blue-500 text-sm"></i>
+                </div>
+            </div>
+        </div>
+        <div class="relative">
+            <button id="logout-btn" class="bg-red-500 text-white px-3 py-1 text-sm rounded-full flex items-center gap-1">
+                <i class="fa-solid fa-right-from-bracket"></i>Logout
+            </button>
+        </div>
+    </header>
+
+    <section class="wallet-card text-gray-800 rounded-2xl p-6 my-4 shadow-lg">
+        <div class="relative z-10">
+            <div class="flex items-center gap-2 text-sm">
+                <span>Wallet Balance:</span>
+                <i id="toggle-balance" class="fa-regular fa-eye-slash cursor-pointer"></i>
+            </div>
+            <p id="wallet-balance" class="text-4xl font-bold mt-2">₦ {{ user.wallet_balance|floatformat:2 }}</p>
+        </div>
+    </section>
+
+    <section id="bank-details-prompt" class="bg-teal-500/20 text-teal-300 p-4 rounded-xl flex items-center gap-4 mb-6 {% if user.bank_details %}hidden{% endif %} cursor-pointer">
+        <i class="fa-solid fa-building-columns text-2xl"></i>
+        <p class="text-sm">Please add your bank details to submit transactions</p>
+    </section>
+
+
+            <div class="marquee-container bg-gray-800 rounded-lg p-3 overflow-hidden">
+                <div class="marquee-content flex">
+                                    <div class="marquee-item text-sm">
+                                        <i class="fab fa-bitcoin text-orange-400 mr-2"></i>
+                                        <span class="font-bold text-gray-300">Bitcoin:</span>
+                                        <span class="text-green-400 ml-1 font-semibold">$112,390</span>
+                                        <span class="text-gray-400 mx-2">|</span>
+                                        <span class="font-bold text-gray-300">Our Rate:</span>
+                                        <span class="text-yellow-400 ml-1 font-semibold">₦1,520/$</span>
+                                    </div>
+                                
+                                    <div class="marquee-item text-sm">
+                                        <i class="fab fa-ethereum text-gray-400 mr-2"></i>
+                                        <span class="font-bold text-gray-300">Ethereum:</span>
+                                        <span class="text-green-400 ml-1 font-semibold">$4,505.39</span>
+                                        <span class="text-gray-400 mx-2">|</span>
+                                        <span class="font-bold text-gray-300">Our Rate:</span>
+                                        <span class="text-yellow-400 ml-1 font-semibold">₦1,520/$</span>
+                                    </div>
+                                
+                                    <div class="marquee-item text-sm">
+                                        <i class="fas fa-dollar-sign text-green-400 mr-2"></i>
+                                        <span class="font-bold text-gray-300">Tether:</span>
+                                        <span class="text-green-400 ml-1 font-semibold">$1</span>
+                                        <span class="text-gray-400 mx-2">|</span>
+                                        <span class="font-bold text-gray-300">Our Rate:</span>
+                                        <span class="text-yellow-400 ml-1 font-semibold">₦1,520/$</span>
+                                    </div>
+                                
+                                    <div class="marquee-item text-sm">
+                                        <i class="fab fa-bitcoin text-orange-400 mr-2"></i>
+                                        <span class="font-bold text-gray-300">Bitcoin:</span>
+                                        <span class="text-green-400 ml-1 font-semibold">$112,390</span>
+                                        <span class="text-gray-400 mx-2">|</span>
+                                        <span class="font-bold text-gray-300">Our Rate:</span>
+                                        <span class="text-yellow-400 ml-1 font-semibold">₦1,520/$</span>
+                                    </div>
+                                
+                                    <div class="marquee-item text-sm">
+                                        <i class="fab fa-ethereum text-gray-400 mr-2"></i>
+                                        <span class="font-bold text-gray-300">Ethereum:</span>
+                                        <span class="text-green-400 ml-1 font-semibold">$4,505.39</span>
+                                        <span class="text-gray-400 mx-2">|</span>
+                                        <span class="font-bold text-gray-300">Our Rate:</span>
+                                        <span class="text-yellow-400 ml-1 font-semibold">₦1,520/$</span>
+                                    </div>
+                                
+                                    <div class="marquee-item text-sm">
+                                        <i class="fas fa-dollar-sign text-green-400 mr-2"></i>
+                                        <span class="font-bold text-gray-300">Tether:</span>
+                                        <span class="text-green-400 ml-1 font-semibold">$1</span>
+                                        <span class="text-gray-400 mx-2">|</span>
+                                        <span class="font-bold text-gray-300">Our Rate:</span>
+                                        <span class="text-yellow-400 ml-1 font-semibold">₦1,520/$</span>
+                                    </div>
+                                </div>
+            </div>
+        
+
+    <section>
+        <h2 class="text-lg font-semibold my-6">Actions</h2>
+        <div class="grid grid-cols-3 gap-4">
+            <div class="action-item rounded-xl p-4 flex flex-col items-center justify-center aspect-square" data-action="add_funds">
+                <div class="w-12 h-12 bg-green-500/20 rounded-full flex items-center justify-center mb-2">
+                    <i class="fa-solid fa-plus text-green-400"></i>
+                </div>
+                <p class="text-sm font-medium">Add Funds</p>
+            </div>
+            <div class="action-item rounded-xl p-4 flex flex-col items-center justify-center aspect-square" data-action="withdraw">
+                <div class="w-12 h-12 bg-yellow-500/20 rounded-full flex items-center justify-center mb-2">
+                    <i class="fa-solid fa-arrow-down text-yellow-400"></i>
+                </div>
+                <p class="text-sm font-medium">Withdraw</p>
+            </div>
+            <div class="action-item rounded-xl p-4 flex flex-col items-center justify-center aspect-square" data-action="transfer">
+                <div class="w-12 h-12 bg-blue-500/20 rounded-full flex items-center justify-center mb-2">
+                    <i class="fa-solid fa-paper-plane text-blue-400"></i>
+                </div>
+                <p class="text-sm font-medium">Transfer</p>
+            </div>
+            <div class="action-item rounded-xl p-4 flex flex-col items-center justify-center aspect-square" data-action="sell_crypto">
+                <div class="w-12 h-12 bg-orange-500/20 rounded-full flex items-center justify-center mb-2">
+                    <i class="fa-brands fa-bitcoin text-orange-400"></i>
+                </div>
+                <p class="text-sm font-medium">Sell Crypto</p>
+            </div>
+            <div class="action-item rounded-xl p-4 flex flex-col items-center justify-center aspect-square" data-action="top_up">
+                <div class="w-12 h-12 bg-sky-500/20 rounded-full flex items-center justify-center mb-2">
+                    <i class="fa-solid fa-mobile-screen-button text-sky-400"></i>
+                </div>
+                <p class="text-sm font-medium">Top-up</p>
+            </div>
+            <div class="action-item rounded-xl p-4 flex flex-col items-center justify-center aspect-square" data-action="cable_tv">
+                <div class="w-12 h-12 bg-indigo-500/20 rounded-full flex items-center justify-center mb-2">
+                    <i class="fa-solid fa-tv text-indigo-400"></i>
+                </div>
+                <p class="text-sm font-medium">Cable Tv</p>
+            </div>
+        </div>
+    </section>
+
+    <nav class="bottom-nav fixed bottom-0 left-0 right-0 max-w-md mx-auto grid grid-cols-5 items-center text-center py-3 border-t border-gray-700 z-40">
+        <a href="/dashboard/" id="nav-app" class="text-yellow-400">
+            <i class="fa-solid fa-house text-xl"></i>
+            <p class="text-xs font-semibold mt-1">Home</p>
+        </a>
+        <a href="#" id="nav-history" class="text-gray-400">
+            <i class="fa-solid fa-list-ul text-xl"></i>
+            <p class="text-xs font-medium mt-1">History</p>
+        </a>
+        <a href="#" id="nav-rates" class="text-gray-400">
+            <i class="fa-solid fa-chart-line text-xl"></i>
+            <p class="text-xs font-medium mt-1">Rates</p>
+        </a>
+        <a href="#" id="nav-profile" class="text-gray-400">
+            <i class="fa-solid fa-user text-xl"></i>
+            <p class="text-xs font-medium mt-1">Profile</p>
+        </a>
+        {% if user.role == 'admin' %}
+        <a href="#" id="nav-admin" class="text-gray-400 relative">
+            <i class="fa-solid fa-user-shield text-xl"></i>
+            <p class="text-xs font-medium mt-1">Admin</p>
+            <div id="admin-notification-badge" class="notification-badge hidden"></div>
+        </a>
+        {% endif %}
+    </nav>
+
+    <!-- Add Funds Modal -->
+    <div id="add-funds-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="modal-content p-6 rounded-2xl w-full max-w-md mx-4">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-semibold">Add Funds to Wallet</h3>
+                <button id="close-add-funds" class="text-gray-400 hover:text-gray-200">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <form id="add-funds-form" class="space-y-4">
+                {% csrf_token %}
+                <div class="text-left">
+                    <label class="block text-gray-400 text-sm mb-2">Amount (₦)</label>
+                    <input type="number" name="amount" required min="100" step="100"
+                           class="form-input w-full p-3 rounded-lg" placeholder="Enter amount"
+                           oninput="this.value = this.value.replace(/[^0-9]/g, '')">
+                </div>
+
+                <button type="submit" class="submit-btn w-full p-4 rounded-lg font-bold text-lg">
+                    Proceed to Payment
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Withdraw Modal -->
+    <div id="withdraw-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="modal-content p-6 rounded-2xl w-full max-w-md mx-4">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-semibold">Withdraw to Bank</h3>
+                <button id="close-withdraw" class="text-gray-400 hover:text-gray-200">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div id="withdraw-alert" class="hidden"></div>
+            <form id="withdraw-form" class="space-y-4">
+                {% csrf_token %}
+                <div class="text-left">
+                    <p class="text-sm text-gray-400">Withdrawal Account:</p>
+                    <div class="p-3 bg-gray-700 rounded-lg">
+                        <p class="font-semibold">{{ user.bank_details.account_name }}</p>
+                        <small>{{ user.bank_details.bank_name }} - {{ user.bank_details.account_number }}</small>
+                    </div>
+                </div>
+                <div class="text-left">
+                    <label class="block text-gray-400 text-sm mb-2">Amount (₦)</label>
+                    <input type="number" id="withdraw-amount" required min="100" step="100"
+                           class="form-input w-full p-3 rounded-lg" placeholder="Enter amount"
+                           oninput="this.value = this.value.replace(/[^0-9]/g, '')">
+                </div>
+                <button type="submit" class="submit-btn w-full p-4 rounded-lg font-bold text-lg">
+                    Withdraw Funds
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Transfer Modal -->
+    <div id="transfer-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="modal-content p-6 rounded-2xl w-full max-w-md mx-4">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-semibold">Transfer Funds</h3>
+                <button id="close-transfer" class="text-gray-400 hover:text-gray-200">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="flex border-b border-gray-700 mb-4">
+                <button id="tab-user" class="tab-btn active flex-1 py-2 font-semibold">SpaceVest User</button>
+                <button id="tab-bank" class="tab-btn flex-1 py-2 font-semibold">Bank Account</button>
+            </div>
+            <div id="transfer-alert" class="hidden"></div>
+
+            <!-- SpaceVest User Tab Content -->
+            <div id="content-user">
+                <form id="transfer-user-form" class="space-y-4">
+                    {% csrf_token %}
+                    <div class="text-left">
+                        <label class="block text-gray-400 text-sm mb-2">Recipient Email</label>
+                        <input type="email" id="transfer-email" class="form-input w-full p-3 rounded-lg" required>
+                    </div>
+                    <div class="text-left">
+                        <label class="block text-gray-400 text-sm mb-2">Amount (₦)</label>
+                        <input type="number" id="transfer-user-amount" class="form-input w-full p-3 rounded-lg" required>
+                    </div>
+                    <button type="submit" class="submit-btn w-full p-4 rounded-lg font-bold text-lg">
+                        Send
+                    </button>
+                </form>
+            </div>
+
+            <!-- Bank Account Tab Content -->
+            <div id="content-bank" class="hidden">
+                {% if user.bank_details %}
+                <form id="transfer-bank-form" class="space-y-4">
+                    {% csrf_token %}
+                    <div class="text-left">
+                        <p class="text-sm text-gray-400">Recipient</p>
+                        <div class="p-3 bg-gray-700 rounded-lg">
+                            {{ user.bank_details.account_name }}<br>
+                            <small>{{ user.bank_details.bank_name }} - {{ user.bank_details.account_number }}</small>
+                        </div>
+                    </div>
+                    <div class="text-left">
+                        <label class="block text-gray-400 text-sm mb-2">Amount (₦)</label>
+                        <input type="number" id="transfer-bank-amount" class="form-input w-full p-3 rounded-lg" required>
+                    </div>
+                    <button type="submit" class="submit-btn w-full p-4 rounded-lg font-bold text-lg">
+                        Withdraw Funds
+                    </button>
+                </form>
+                {% else %}
+                <p class="text-center text-yellow-400">Please add a bank account in your profile first.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Sell Crypto Modal -->
+    <div id="sell-crypto-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="modal-content p-6 rounded-2xl w-full max-w-md mx-4">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-semibold">Sell Crypto</h3>
+                <button id="close-sell-crypto" class="text-gray-400 hover:text-gray-200">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div id="sell-crypto-alert" class="hidden"></div>
+            <form id="sell-crypto-form" class="space-y-4">
+                {% csrf_token %}
+                <div class="text-left">
+                    <label class="block text-gray-400 text-sm mb-2">Cryptocurrency</label>
+                    <select id="crypto-select" class="form-input w-full p-3 rounded-lg">
+                        <option value="">Select Crypto</option>
+                        <option value="bitcoin">Bitcoin (BTC)</option>
+                        <option value="ethereum">Ethereum (ETH)</option>
+                        <option value="tether">Tether (USDT)</option>
+                    </select>
+                </div>
+                <div class="text-left">
+                    <label class="block text-gray-400 text-sm mb-2">Amount to Sell (USD)</label>
+                    <input type="number" step="any" id="crypto-amount-usd" class="form-input w-full p-3 rounded-lg" required>
+                </div>
+                <div class="p-4 bg-gray-800 rounded-lg text-left">
+                    <p class="text-sm text-gray-400">Current Rate</p>
+                    <p id="admin-rate-display" class="text-xl font-bold">₦0.00 / $</p>
+                </div>
+                <button type="submit" class="submit-btn w-full p-4 rounded-lg font-bold text-lg">
+                    Sell Now (via WhatsApp)
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Top-up Modal -->
+    <div id="top-up-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="modal-content p-6 rounded-2xl w-full max-w-md mx-4">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-semibold">Top-up</h3>
+                <button id="close-top-up" class="text-gray-400 hover:text-gray-200">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="flex border-b border-gray-700 mb-4">
+                <button id="tab-airtime" class="tab-btn active flex-1 py-2 font-semibold">Airtime</button>
+                <button id="tab-data" class="tab-btn flex-1 py-2 font-semibold">Data</button>
+            </div>
+            <div id="top-up-alert" class="hidden"></div>
+
+            <!-- Airtime Tab -->
+            <div id="content-airtime">
+                <form id="airtime-form" class="space-y-4">
+                    {% csrf_token %}
+                    <div class="text-left">
+                        <label class="block text-gray-400 text-sm mb-2">Network</label>
+                        <select id="airtime-network" class="form-input w-full p-3 rounded-lg">
+                            <option>MTN</option><option>Glo</option><option>Airtel</option><option>9mobile</option>
+                        </select>
+                    </div>
+                    <div class="text-left">
+                        <label class="block text-gray-400 text-sm mb-2">Phone Number</label>
+                        <input type="tel" id="airtime-phone" class="form-input w-full p-3 rounded-lg" required>
+                    </div>
+                    <div class="text-left">
+                        <label class="block text-gray-400 text-sm mb-2">Amount (₦)</label>
+                        <input type="number" id="airtime-amount" class="form-input w-full p-3 rounded-lg" required>
+                    </div>
+                    <button type="submit" class="submit-btn w-full p-4 rounded-lg font-bold text-lg">
+                        Buy Airtime
+                    </button>
+                </form>
+            </div>
+
+            <!-- Data Tab -->
+            <div id="content-data" class="hidden">
+                <form id="data-form" class="space-y-4">
+                    {% csrf_token %}
+                    <div class="text-left">
+                        <label class="block text-gray-400 text-sm mb-2">Network</label>
+                        <select id="data-network" class="form-input w-full p-3 rounded-lg">
+                            <option value="mtn">MTN</option><option value="glo">Glo</option><option value="airtel">Airtel</option><option value="9mobile">9mobile</option>
+                        </select>
+                    </div>
+                    <div class="text-left">
+                        <label class="block text-gray-400 text-sm mb-2">Phone Number</label>
+                        <input type="tel" id="data-phone" class="form-input w-full p-3 rounded-lg" required>
+                    </div>
+                    <div class="text-left">
+                        <label class="block text-gray-400 text-sm mb-2">Data Plan</label>
+                        <select id="data-plan" class="form-input w-full p-3 rounded-lg"></select>
+                    </div>
+                    <button type="submit" class="submit-btn w-full p-4 rounded-lg font-bold text-lg">
+                        Buy Data
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://js.paystack.co/v1/inline.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const loader = document.getElementById('app-loader');
+            const authErrorEl = document.getElementById('auth-error');
+            const logoutBtn = document.getElementById('logout-btn');
+            const addFundsModal = document.getElementById('add-funds-modal');
+            const closeAddFundsBtn = document.getElementById('close-add-funds');
+            const addFundsForm = document.getElementById('add-funds-form');
+            
+            // Show error function
+            function showError(message) {
+                authErrorEl.textContent = message;
+                authErrorEl.classList.remove('hidden');
+                setTimeout(() => { authErrorEl.classList.add('hidden'); }, 3000);
+            }
+
+            // Show success function
+            function showSuccess(message) {
+                authErrorEl.className = 'fixed top-5 left-1/2 -translate-x-1/2 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-50';
+                authErrorEl.textContent = message;
+                setTimeout(() => {
+                    authErrorEl.classList.add('hidden');
+                    authErrorEl.className = 'fixed top-5 left-1/2 -translate-x-1/2 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg hidden z-50';
+                }, 3000);
+            }
+
+            // Logout functionality
+            logoutBtn.addEventListener('click', async function() {
+                try {
+                    const response = await fetch('/api/users/logout/', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCSRFToken(),
+                        }
+                    });
+
+                    if (response.ok) {
+                        window.location.href = '/';
+                    } else {
+                        showError('Logout failed');
+                    }
+                } catch (error) {
+                    showError('Network error: ' + error.message);
+                }
+            });
+
+            // Declare all modal variables first
+            const withdrawModal = document.getElementById('withdraw-modal');
+            const transferModal = document.getElementById('transfer-modal');
+            const sellCryptoModal = document.getElementById('sell-crypto-modal');
+            const topUpModal = document.getElementById('top-up-modal');
+
+            // Now add the action item event listeners
+            const actionItems = document.querySelectorAll('.action-item');
+            actionItems.forEach(item => {
+                item.addEventListener('click', function() {
+                    const action = this.getAttribute('data-action');
+                    if (action === 'add_funds') {
+                        addFundsModal.classList.remove('hidden');
+                    } else if (action === 'withdraw') {
+                        withdrawModal.classList.remove('hidden');
+                    } else if (action === 'transfer') {
+                        transferModal.classList.remove('hidden');
+                    } else if (action === 'sell_crypto') {
+                        sellCryptoModal.classList.remove('hidden');
+                    } else if (action === 'top_up') {
+                        topUpModal.classList.remove('hidden');
+                    } else {
+                        showError(`${action.replace('_', ' ')} feature coming soon!`);
+                    }
+                });
+            });
+
+            // Close add funds modal
+            closeAddFundsBtn.addEventListener('click', function() {
+                addFundsModal.classList.add('hidden');
+            });
+
+            // Add funds form submission
+            addFundsForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                
+                const formData = new FormData(e.target);
+                const amount = formData.get('amount');
+                
+                if (amount < 100) {
+                    showError('Minimum amount is ₦100');
+                    return;
+                }
+
+                try {
+                    // Get user email for Paystack
+                    const userResponse = await fetch('/api/users/profile/', {
+                        headers: {
+                            'X-CSRFToken': getCSRFToken(),
+                        }
+                    });
+
+                    if (!userResponse.ok) {
+                        const errorData = await userResponse.json().catch(() => ({}));
+                        throw new Error(errorData.error || `Failed to get user profile (${userResponse.status})`);
+                    }
+
+                    const userData = await userResponse.json();
+                    const userEmail = userData.email;
+                    
+                    if (!userEmail) {
+                        throw new Error('User email not found in profile');
+                    }
+
+                    // Initialize Paystack payment
+                    const handler = PaystackPop.setup({
+                        key: '{{ paystack_public_key }}', // Paystack public key from settings
+                        email: userEmail,
+                        amount: amount * 100, // Convert to kobo
+                        currency: 'NGN',
+                        ref: 'SPV_' + Date.now(), // Generate a unique reference
+                        metadata: {
+                            custom_fields: [
+                                {
+                                    display_name: "User ID",
+                                    variable_name: "user_id",
+                                    value: "{{ user.id }}"
+                                }
+                            ]
+                        },
+                        callback: function(response) {
+                            // Payment successful
+                            if (response.status === 'success') {
+                                showSuccess('Payment successful! Adding funds to your wallet...');
+                                
+                                // Add funds to wallet - handle async operation properly
+                                addFundsToWallet(amount, 'Wallet top-up via Paystack', response.reference)
+                                    .then(success => {
+                                        if (success) {
+                                            showSuccess('Funds added to your wallet successfully!');
+                                            addFundsModal.classList.add('hidden');
+                                            
+                                            // Refresh page to update wallet balance
+                                            setTimeout(() => {
+                                                window.location.reload();
+                                            }, 2000);
+                                        } else {
+                                            showError('Payment successful but failed to add funds to wallet. Please contact support.');
+                                        }
+                                    })
+                                    .catch(error => {
+                                        console.error('Error adding funds:', error);
+                                        showError('Payment successful but error adding funds: ' + error.message);
+                                    });
+                            }
+                        },
+                        onClose: function() {
+                            showError('Payment was cancelled');
+                        }
+                    });
+
+                    handler.openIframe();
+
+                } catch (error) {
+                    console.error('Error:', error);
+                    showError('Failed to initialize payment: ' + error.message);
+                }
+            });
+
+            // Function to add funds to wallet
+            async function addFundsToWallet(amount, description, reference) {
+                try {
+                    const response = await fetch('/api/transactions/add-funds/', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCSRFToken(),
+                        },
+                        body: JSON.stringify({
+                            amount: amount,
+                            description: description,
+                            reference: reference,
+                            metadata: {
+                                payment_gateway: 'paystack',
+                                timestamp: new Date().toISOString()
+                            }
+                        })
+                    });
+
+                    if (response.ok) {
+                        console.log('Funds added to wallet successfully');
+                        return true;
+                    } else {
+                        let errorData = {};
+                        try {
+                            errorData = await response.json();
+                            console.error('Failed to add funds:', errorData);
+                        } catch (jsonError) {
+                            console.error('Failed to parse error response:', jsonError);
+                            // If we can't parse JSON, try to get text response
+                            const errorText = await response.text();
+                            throw new Error(`Server error: ${response.status} - ${errorText.substring(0, 100)}`);
+                        }
+                        
+                        // Provide more specific error messages
+                        if (response.status === 400) {
+                            throw new Error(errorData.error || 'Invalid request. Please try again.');
+                        } else if (response.status === 401) {
+                            throw new Error('Authentication failed. Please log in again.');
+                        } else if (response.status === 403) {
+                            throw new Error('Permission denied. Please contact support.');
+                        } else {
+                            throw new Error(errorData.error || 'Server error. Please try again later.');
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error adding funds to wallet:', error);
+                    throw error; // Re-throw to be caught by the caller
+                }
+            }
+
+            // CSRF Token function
+            function getCSRFToken() {
+                const cookieValue = document.cookie
+                    .split('; ')
+                    .find(row => row.startsWith('csrftoken='))
+                    ?.split('=')[1];
+                return cookieValue || '';
+            }
+
+            // Hide loader when page is loaded
+            loader.style.display = 'none';
+
+            // Modal management functions
+            function showAlert(elementId, message, type = 'error') {
+                const alertEl = document.getElementById(elementId);
+                if (alertEl) {
+                    alertEl.textContent = message;
+                    alertEl.className = `text-sm p-2 rounded-md my-2 ${type === 'error' ? 'bg-red-500/20 text-red-300' : 'bg-green-500/20 text-green-300'}`;
+                    alertEl.classList.remove('hidden');
+                    setTimeout(() => { alertEl.classList.add('hidden'); }, 3000);
+                }
+            }
+
+            // Withdraw modal
+            const closeWithdrawBtn = document.getElementById('close-withdraw');
+            const withdrawForm = document.getElementById('withdraw-form');
+
+            closeWithdrawBtn.addEventListener('click', () => withdrawModal.classList.add('hidden'));
+
+            withdrawForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                const amount = parseFloat(document.getElementById('withdraw-amount').value);
+
+                if (isNaN(amount) || amount <= 0) {
+                    showAlert('withdraw-alert', 'Invalid amount.');
+                    return;
+                }
+
+                if (amount > parseFloat('{{ user.wallet_balance|default:0 }}')) {
+                    showAlert('withdraw-alert', 'Insufficient funds.');
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/transactions/withdraw/', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCSRFToken(),
+                        },
+                        body: JSON.stringify({ amount: amount })
+                    });
+
+                    if (response.ok) {
+                        showAlert('withdraw-alert', 'Withdrawal initiated successfully!', 'success');
+                        withdrawForm.reset();
+                        setTimeout(() => {
+                            withdrawModal.classList.add('hidden');
+                            window.location.reload();
+                        }, 2000);
+                    } else {
+                        const errorData = await response.json();
+                        showAlert('withdraw-alert', errorData.error || 'Withdrawal failed.');
+                    }
+                } catch (error) {
+                    showAlert('withdraw-alert', 'Network error: ' + error.message);
+                }
+            });
+
+            // Transfer modal
+            const closeTransferBtn = document.getElementById('close-transfer');
+            const transferUserForm = document.getElementById('transfer-user-form');
+            const transferBankForm = document.getElementById('transfer-bank-form');
+            const tabUser = document.getElementById('tab-user');
+            const tabBank = document.getElementById('tab-bank');
+            const contentUser = document.getElementById('content-user');
+            const contentBank = document.getElementById('content-bank');
+
+            closeTransferBtn.addEventListener('click', () => transferModal.classList.add('hidden'));
+
+            tabUser.addEventListener('click', () => {
+                tabUser.classList.add('active');
+                tabBank.classList.remove('active');
+                contentUser.classList.remove('hidden');
+                contentBank.classList.add('hidden');
+            });
+
+            tabBank.addEventListener('click', () => {
+                tabBank.classList.add('active');
+                tabUser.classList.remove('active');
+                contentBank.classList.remove('hidden');
+                contentUser.classList.add('hidden');
+            });
+
+            transferUserForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                const recipientEmail = document.getElementById('transfer-email').value;
+                const amount = parseFloat(document.getElementById('transfer-user-amount').value);
+
+                if (recipientEmail === '{{ user.email }}') {
+                    showAlert('transfer-alert', 'You cannot transfer to yourself.');
+                    return;
+                }
+
+                if (isNaN(amount) || amount <= 0) {
+                    showAlert('transfer-alert', 'Invalid amount.');
+                    return;
+                }
+
+                if (amount > parseFloat('{{ user.wallet_balance|default:0 }}')) {
+                    showAlert('transfer-alert', 'Insufficient funds.');
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/transactions/transfer/', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCSRFToken(),
+                        },
+                        body: JSON.stringify({
+                            recipient_email: recipientEmail,
+                            amount: amount,
+                            type: 'user'
+                        })
+                    });
+
+                    if (response.ok) {
+                        showAlert('transfer-alert', 'Transfer successful!', 'success');
+                        transferUserForm.reset();
+                        setTimeout(() => {
+                            transferModal.classList.add('hidden');
+                            window.location.reload();
+                        }, 2000);
+                    } else {
+                        const errorData = await response.json();
+                        showAlert('transfer-alert', errorData.error || 'Transfer failed.');
+                    }
+                } catch (error) {
+                    showAlert('transfer-alert', 'Network error: ' + error.message);
+                }
+            });
+
+            transferBankForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                const amount = parseFloat(document.getElementById('transfer-bank-amount').value);
+
+                if (isNaN(amount) || amount <= 0) {
+                    showAlert('transfer-alert', 'Invalid amount.');
+                    return;
+                }
+
+                if (amount > parseFloat('{{ user.wallet_balance|default:0 }}')) {
+                    showAlert('transfer-alert', 'Insufficient funds.');
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/transactions/transfer/', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCSRFToken(),
+                        },
+                        body: JSON.stringify({
+                            amount: amount,
+                            type: 'bank'
+                        })
+                    });
+
+                    if (response.ok) {
+                        showAlert('transfer-alert', 'Bank transfer initiated successfully!', 'success');
+                        transferBankForm.reset();
+                        setTimeout(() => {
+                            transferModal.classList.add('hidden');
+                            window.location.reload();
+                        }, 2000);
+                    } else {
+                        const errorData = await response.json();
+                        showAlert('transfer-alert', errorData.error || 'Transfer failed.');
+                    }
+                } catch (error) {
+                    showAlert('transfer-alert', 'Network error: ' + error.message);
+                }
+            });
+
+            // Sell crypto modal
+            const closeSellCryptoBtn = document.getElementById('close-sell-crypto');
+            const sellCryptoForm = document.getElementById('sell-crypto-form');
+            const cryptoSelect = document.getElementById('crypto-select');
+
+            closeSellCryptoBtn.addEventListener('click', () => sellCryptoModal.classList.add('hidden'));
+
+            cryptoSelect.addEventListener('change', function() {
+                const cryptoId = this.value;
+                const rateDisplay = document.getElementById('admin-rate-display');
+                // For now, use a default rate. In production, fetch from backend
+                const rates = {
+                    'bitcoin': 1520,
+                    'ethereum': 1520,
+                    'tether': 1520
+                };
+                rateDisplay.textContent = cryptoId ? `₦${rates[cryptoId] || 0}/$` : '₦0.00/$';
+            });
+
+            sellCryptoForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                const cryptoId = cryptoSelect.value;
+                const amountUSD = document.getElementById('crypto-amount-usd').value;
+
+                if (!cryptoId) {
+                    showAlert('sell-crypto-alert', 'Please select a cryptocurrency.');
+                    return;
+                }
+
+                if (!amountUSD || parseFloat(amountUSD) <= 0) {
+                    showAlert('sell-crypto-alert', 'Please enter a valid amount.');
+                    return;
+                }
+
+                const phoneNumber = "2347066718413"; // Replace with actual support number
+                const message = `Hello, I want to sell ${amountUSD} USD of ${cryptoSelect.options[cryptoSelect.selectedIndex].text} at your rate.`;
+                const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
+
+                window.open(whatsappUrl, '_blank');
+                sellCryptoModal.classList.add('hidden');
+            });
+
+            // Top-up modal
+            const closeTopUpBtn = document.getElementById('close-top-up');
+            const airtimeForm = document.getElementById('airtime-form');
+            const dataForm = document.getElementById('data-form');
+            const tabAirtime = document.getElementById('tab-airtime');
+            const tabData = document.getElementById('tab-data');
+            const contentAirtime = document.getElementById('content-airtime');
+            const contentData = document.getElementById('content-data');
+            const dataNetworkSelect = document.getElementById('data-network');
+            const dataPlanSelect = document.getElementById('data-plan');
+
+            closeTopUpBtn.addEventListener('click', () => topUpModal.classList.add('hidden'));
+
+            tabAirtime.addEventListener('click', () => {
+                tabAirtime.classList.add('active');
+                tabData.classList.remove('active');
+                contentAirtime.classList.remove('hidden');
+                contentData.classList.add('hidden');
+            });
+
+            tabData.addEventListener('click', () => {
+                tabData.classList.add('active');
+                tabAirtime.classList.remove('active');
+                contentData.classList.remove('hidden');
+                contentAirtime.classList.add('hidden');
+            });
+
+            const dataPlans = {
+                mtn: [
+                    { name: "1.5GB - 30 Days", price: 1000 },
+                    { name: "4.5GB - 30 Days", price: 2000 }
+                ],
+                glo: [
+                    { name: "2.9GB - 30 Days", price: 1000 },
+                    { name: "7.7GB - 30 Days", price: 2000 }
+                ],
+                airtel: [
+                    { name: "1.5GB - 30 Days", price: 1000 },
+                    { name: "6GB - 30 Days", price: 2500 }
+                ],
+                '9mobile': [
+                    { name: "1GB - 30 Days", price: 1000 },
+                    { name: "4.5GB - 30 Days", price: 2000 }
+                ]
+            };
+
+            dataNetworkSelect.addEventListener('change', function() {
+                const selectedNetwork = this.value;
+                dataPlanSelect.innerHTML = dataPlans[selectedNetwork].map(plan =>
+                    `<option value="${plan.price}">${plan.name} - ₦${plan.price.toLocaleString()}</option>`
+                ).join('');
+            });
+
+            airtimeForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                const amount = parseFloat(document.getElementById('airtime-amount').value);
+                const phone = document.getElementById('airtime-phone').value;
+                const network = document.getElementById('airtime-network').value;
+
+                if (isNaN(amount) || amount < 50) {
+                    showAlert('top-up-alert', 'Minimum airtime is ₦50.');
+                    return;
+                }
+
+                if (amount > parseFloat('{{ user.wallet_balance|default:0 }}')) {
+                    showAlert('top-up-alert', 'Insufficient funds.');
+                    return;
+                }
+
+                if (!/^\d{11}$/.test(phone)) {
+                    showAlert('top-up-alert', 'Invalid phone number (must be 11 digits).');
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/transactions/top-up/', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCSRFToken(),
+                        },
+                        body: JSON.stringify({
+                            type: 'airtime',
+                            network: network,
+                            phone: phone,
+                            amount: amount
+                        })
+                    });
+
+                    if (response.ok) {
+                        showAlert('top-up-alert', `Successfully purchased ₦${amount.toLocaleString()} airtime!`, 'success');
+                        airtimeForm.reset();
+                        setTimeout(() => {
+                            topUpModal.classList.add('hidden');
+                            window.location.reload();
+                        }, 2000);
+                    } else {
+                        const errorData = await response.json();
+                        showAlert('top-up-alert', errorData.error || 'Purchase failed.');
+                    }
+                } catch (error) {
+                    showAlert('top-up-alert', 'Network error: ' + error.message);
+                }
+            });
+
+            dataForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                const price = parseFloat(dataPlanSelect.value);
+                const planText = dataPlanSelect.options[dataPlanSelect.selectedIndex].text;
+                const phone = document.getElementById('data-phone').value;
+
+                if (price > parseFloat('{{ user.wallet_balance|default:0 }}')) {
+                    showAlert('top-up-alert', 'Insufficient funds.');
+                    return;
+                }
+
+                if (!/^\d{11}$/.test(phone)) {
+                    showAlert('top-up-alert', 'Invalid phone number (must be 11 digits).');
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/transactions/top-up/', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCSRFToken(),
+                        },
+                        body: JSON.stringify({
+                            type: 'data',
+                            network: dataNetworkSelect.value,
+                            phone: phone,
+                            plan: planText,
+                            amount: price
+                        })
+                    });
+
+                    if (response.ok) {
+                        showAlert('top-up-alert', `Successfully purchased ${planText}!`, 'success');
+                        dataForm.reset();
+                        setTimeout(() => {
+                            topUpModal.classList.add('hidden');
+                            window.location.reload();
+                        }, 2000);
+                    } else {
+                        const errorData = await response.json();
+                        showAlert('top-up-alert', errorData.error || 'Purchase failed.');
+                    }
+                } catch (error) {
+                    showAlert('top-up-alert', 'Network error: ' + error.message);
+                }
+            });
+
+            // Update action item clicks to open respective modals
+            actionItems.forEach(item => {
+                item.addEventListener('click', function() {
+                    const action = this.getAttribute('data-action');
+
+                    if (action === 'add_funds') {
+                        addFundsModal.classList.remove('hidden');
+                    } else if (action === 'withdraw') {
+                        withdrawModal.classList.remove('hidden');
+                    } else if (action === 'transfer') {
+                        transferModal.classList.remove('hidden');
+                    } else if (action === 'sell_crypto') {
+                        sellCryptoModal.classList.remove('hidden');
+                    } else if (action === 'top_up') {
+                        topUpModal.classList.remove('hidden');
+                    } else {
+                        showError(`${action.replace('_', ' ')} feature coming soon!`);
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>
+
