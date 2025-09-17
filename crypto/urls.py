@@ -8,4 +8,6 @@ urlpatterns = [
     path('convert/', views.convert_crypto, name='convert-crypto'),
     path('quote/', views.get_purchase_quote, name='crypto-purchase-quote'),
     path('update-rates/', views.update_crypto_rates, name='update-crypto-rates'),
+    path('admin/update-rate/', views.admin_update_rate, name='admin-update-rate'),
+    path('admin/get-rates/', views.admin_get_rates, name='admin-get-rates'),
 ]

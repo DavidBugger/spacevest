@@ -63,6 +63,7 @@ class AirtimePurchaseSerializer(serializers.Serializer):
     network = serializers.CharField(max_length=50)
     amount = serializers.DecimalField(max_digits=10, decimal_places=2)
     plan_name = serializers.CharField(max_length=100, required=False)
+    product_code = serializers.CharField(max_length=100, required=False, allow_blank=True)
 
 class DataPurchaseSerializer(serializers.Serializer):
     phone_number = serializers.CharField(max_length=15)

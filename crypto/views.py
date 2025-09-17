@@ -153,3 +153,107 @@ def update_crypto_rates(request):
             
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['POST'])
+@permission_classes([])
+def admin_update_rate(request):
+    """
+    Admin endpoint to manually update cryptocurrency exchange rates
+    """
+    from rest_framework.permissions import IsAuthenticated
+    from django.contrib.auth.decorators import user_passes_test
+    from django.utils import timezone
+    
+    # Check if user is authenticated and is admin
+    if not request.user.is_authenticated:
+        return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    if not (request.user.is_superuser or getattr(request.user, 'role', '') == 'admin'):
+        return Response({'error': 'Admin access required'}, status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        cryptocurrency = request.data.get('cryptocurrency', '').lower()
+        new_rate_ngn = request.data.get('rate_ngn')
+        
+        if not cryptocurrency or not new_rate_ngn:
+            return Response({'error': 'Cryptocurrency and rate_ngn are required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            new_rate_ngn = float(new_rate_ngn)
+            if new_rate_ngn <= 0:
+                return Response({'error': 'Rate must be greater than 0'}, status=status.HTTP_400_BAD_REQUEST)
+        except (ValueError, TypeError):
+            return Response({'error': 'Invalid rate format'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Map cryptocurrency names to symbols
+        crypto_mapping = {
+            'bitcoin': 'BTC',
+            'ethereum': 'ETH', 
+            'tether': 'USDT'
+        }
+        
+        symbol = crypto_mapping.get(cryptocurrency)
+        if not symbol:
+            return Response({'error': 'Unsupported cryptocurrency'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get or create the crypto rate record
+        crypto_rate, created = CryptoRate.objects.get_or_create(
+            symbol=symbol,
+            defaults={
+                'cryptocurrency': symbol,
+                'current_price_ngn': new_rate_ngn,
+                'current_price_usd': 1.0,  # Default USD price
+                'last_updated': timezone.now()
+            }
+        )
+        
+        if not created:
+            # Update existing record
+            crypto_rate.current_price_ngn = new_rate_ngn
+            crypto_rate.last_updated = timezone.now()
+            crypto_rate.save()
+        
+        return Response({
+            'message': f'Successfully updated {cryptocurrency} rate to ₦{new_rate_ngn}',
+            'cryptocurrency': cryptocurrency,
+            'symbol': symbol,
+            'new_rate_ngn': new_rate_ngn,
+            'updated_at': crypto_rate.last_updated
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({'error': f'Server error: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+@permission_classes([])
+def admin_get_rates(request):
+    """
+    Admin endpoint to get all current cryptocurrency rates
+    """
+    # Check if user is authenticated and is admin
+    if not request.user.is_authenticated:
+        return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    if not (request.user.is_superuser or getattr(request.user, 'role', '') == 'admin'):
+        return Response({'error': 'Admin access required'}, status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        rates = CryptoRate.objects.all().order_by('cryptocurrency')
+        rates_data = []
+        
+        for rate in rates:
+            rates_data.append({
+                'cryptocurrency': rate.cryptocurrency,
+                'symbol': rate.symbol,
+                'current_price_ngn': float(rate.current_price_ngn),
+                'current_price_usd': float(rate.current_price_usd),
+                'last_updated': rate.last_updated
+            })
+        
+        return Response({
+            'rates': rates_data,
+            'count': len(rates_data)
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({'error': f'Server error: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

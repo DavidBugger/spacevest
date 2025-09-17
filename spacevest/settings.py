@@ -12,7 +12,21 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 import os
 from pathlib import Path
-from decouple import config
+import pymysql
+pymysql.install_as_MySQLdb()
+
+# from decouple import config
+
+try:
+    from decouple import config
+except ImportError:
+    # Fallback for development if decouple is not installed
+    import os
+    def config(key, default=None, cast=None):
+        value = os.environ.get(key, default)
+        if cast and value is not None:
+            return cast(value)
+        return value
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -79,10 +93,25 @@ WSGI_APPLICATION = "spacevest.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
+# DATABASES = {
+#     "default": {
+#         "ENGINE": "django.db.backends.postgresql",
+#         "NAME": config('DB_NAME', default='postgres'),
+#         "USER": config('DB_USER', default='postgres'),
+#         "PASSWORD": config('DB_PASSWORD', default=''),
+#         "HOST": config('DB_HOST', default='postgres'),
+#         "PORT": config('DB_PORT', default='5432'),
+#     }
+# }
+
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': config('DB_NAME', 'spacevest_db'),
+        'USER': config('DB_USER', 'spacevest_user'),
+        'PASSWORD': config('DB_PASSWORD', 'postgres'),
+        'HOST': config('DB_HOST', 'localhost'),
+        'PORT': config('DB_PORT', default='5432'),
     }
 }
 
@@ -142,6 +171,10 @@ EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
 # Paystack settings
 PAYSTACK_SECRET_KEY = config('PAYSTACK_SECRET_KEY', default='')
 PAYSTACK_PUBLIC_KEY = config('PAYSTACK_PUBLIC_KEY', default='')
+
+# Yanga API settings
+YANGA_API_BASE_URL = 'https://sandbox-api.yangaplugbusiness.com/api/v1'
+YANGA_API_KEY = config('YANGA_API_KEY', default='yanga_sk_test_9288fe9990a8699da8d4_4871249b7487ff02cf3a')
 
 # REST Framework settings
 REST_FRAMEWORK = {

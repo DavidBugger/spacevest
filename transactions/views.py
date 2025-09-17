@@ -3,6 +3,9 @@ from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from django.db import transaction as db_transaction
 from django.contrib.auth import get_user_model
+from django.conf import settings
+import requests
+import uuid
 from .models import Transaction, TransactionFee, CryptoTransaction, AirtimeTransaction, DataTransaction
 from .serializers import (
     TransactionSerializer, CreateTransactionSerializer, TransferSerializer,
@@ -247,7 +250,7 @@ def purchase_data(request):
         try:
             with db_transaction.atomic():
                 data = serializer.validated_data
-                
+
                 # Create transaction
                 transaction = Transaction.objects.create(
                     user=request.user,
@@ -256,7 +259,7 @@ def purchase_data(request):
                     amount=data['amount'],
                     description=f"Data purchase for {data['phone_number']}"
                 )
-                
+
                 # Create data details
                 DataTransaction.objects.create(
                     transaction=transaction,
@@ -265,19 +268,341 @@ def purchase_data(request):
                     data_plan=data['data_plan'],
                     validity="30 days"  # Placeholder
                 )
-                
+
                 # Deduct from wallet
                 request.user.wallet_balance -= data['amount']
                 request.user.save()
-                
+
                 # TODO: Integrate with data API
-                
+
                 transaction.status = 'completed'
                 transaction.save()
-                
+
                 return Response(TransactionSerializer(transaction).data, status=status.HTTP_201_CREATED)
-                
+
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-    
+
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_billers(request, category):
+    """
+    Fetch billers from Yanga API for the specified category (airtime or data_bundle)
+    """
+    headers = {
+        "accept": "application/json",
+        "Authorization": f"Bearer {settings.YANGA_API_KEY}"
+    }
+
+    # Map frontend category to Yanga API category
+    api_category = category
+    if category == 'data_bundle':
+        api_category = 'data_bundle'
+
+    try:
+        url = f"{settings.YANGA_API_BASE_URL}/bill-payments/billers/{api_category}"
+        response = requests.get(url, headers=headers)
+
+        if response.status_code == 200:
+            data = response.json()
+            print(f"Yanga API response for {api_category}: {data}")  # Debug logging
+
+            if data.get('success'):
+                billers_data = data['data']
+                # Ensure billers_data has the expected structure
+                if isinstance(billers_data, dict) and 'billers' in billers_data:
+                    billers_list = billers_data['billers']
+                elif isinstance(billers_data, list):
+                    billers_list = billers_data
+                else:
+                    billers_list = billers_data
+
+                # Use the actual biller codes from Yanga API response
+                transformed_billers = []
+                for biller in billers_list:
+                    if isinstance(biller, dict):
+                        # Use the actual biller codes from Yanga API
+                        biller_code = biller.get('code', '')
+                        biller_name = biller.get('name', '')
+                        has_products = biller.get('has_products', False)
+
+                        transformed_billers.append({
+                            'code': biller_code,
+                            'name': biller_name,
+                            'has_products': has_products,
+                            'minimum': biller.get('minimum'),
+                            'maximum': biller.get('maximum'),
+                            'category': biller.get('category', api_category)
+                        })
+
+                return Response({'billers': transformed_billers}, status=status.HTTP_200_OK)
+            else:
+                return Response({'error': data.get('message', 'No billers found for this category')}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            print(f"Yanga API error for {api_category}: {response.status_code} - {response.text}")  # Debug logging
+            return Response({'error': f'No billers found for this category ({response.status_code})'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        print(f"Exception in get_billers for {api_category}: {str(e)}")  # Debug logging
+        return Response({'error': 'No billers found for this category'}, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_products(request, biller_code):
+    """
+    Fetch products for a specific biller from Yanga API
+    """
+    headers = {
+        "accept": "application/json",
+        "Authorization": f"Bearer {settings.YANGA_API_KEY}"
+    }
+
+    # Use the actual biller codes from Yanga API
+    api_biller_code = biller_code
+
+    try:
+        url = f"{settings.YANGA_API_BASE_URL}/bill-payments/products/{api_biller_code}"
+        response = requests.get(url, headers=headers)
+
+        if response.status_code == 200:
+            data = response.json()
+            print(f"Yanga API products response for {api_biller_code}: {data}")  # Debug logging
+
+            if data.get('success'):
+                products_data = data['data']
+                # Ensure products_data has the expected structure
+                if isinstance(products_data, dict) and 'products' in products_data:
+                    products_list = products_data['products']
+                elif isinstance(products_data, list):
+                    products_list = products_data
+                else:
+                    products_list = products_data
+
+                # Transform products to ensure consistent format
+                transformed_products = []
+                for product in products_list:
+                    if isinstance(product, dict):
+                        transformed_products.append({
+                            'code': product.get('code', ''),
+                            'name': product.get('name', ''),
+                            'amount': product.get('amount', 0),
+                            'description': product.get('description', ''),
+                            'validity': product.get('validity', ''),
+                        })
+
+                return Response({'products': transformed_products}, status=status.HTTP_200_OK)
+            else:
+                return Response({'error': data.get('message', 'Failed to fetch products')}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            print(f"Yanga API products error for {api_biller_code}: {response.status_code} - {response.text}")  # Debug logging
+            return Response({'error': f'Failed to fetch products from external API ({response.status_code})'}, status=status.HTTP_502_BAD_GATEWAY)
+    except Exception as e:
+        print(f"Exception in get_products for {api_biller_code}: {str(e)}")  # Debug logging
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def top_up(request):
+    data = request.data
+    top_up_type = data.get('type')
+
+    print(f"Top-up request data: {data}")  # Debug logging
+
+    headers = {
+        "accept": "application/json",
+        "Authorization": f"Bearer {settings.YANGA_API_KEY}"
+    }
+
+    if top_up_type == 'airtime':
+        serializer = AirtimePurchaseSerializer(data=data)
+        print(f"Airtime serializer data: {data}")  # Debug logging
+        print(f"Airtime serializer is_valid: {serializer.is_valid()}")  # Debug logging
+        if not serializer.is_valid():
+            print(f"Airtime serializer errors: {serializer.errors}")  # Debug logging
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            with db_transaction.atomic():
+                validated_data = serializer.validated_data
+
+                # Use the actual biller code from the network field
+                api_biller_code = validated_data['network']
+
+                # For airtime, check if biller has products
+                products_url = f"{settings.YANGA_API_BASE_URL}/bill-payments/products/{api_biller_code}"
+                products_response = requests.get(products_url, headers=headers)
+
+                product_code = None
+                if products_response.status_code == 200:
+                    products_data = products_response.json()
+                    if products_data.get('success') and products_data.get('data', {}).get('products'):
+                        # Has predefined products - use product code
+                        product_code = validated_data.get('product_code')
+                        if not product_code:
+                            return Response({'error': 'Product code is required for this airtime plan'}, status=status.HTTP_400_BAD_REQUEST)
+                    else:
+                        # No predefined products - use amount directly
+                        product_code = None
+                else:
+                    # Assume no products for airtime
+                    product_code = None
+
+                # Prepare payload for purchase
+                import uuid
+                request_id = str(uuid.uuid4())
+                purchase_payload = {
+                    "request_id": request_id,
+                    "biller_code": api_biller_code,
+                    "recipient": validated_data['phone_number'],
+                    "sync": False
+                }
+
+                # Add product_code if available, otherwise add amount for custom airtime
+                if product_code:
+                    purchase_payload["product_code"] = product_code
+                else:
+                    # For custom airtime amount - convert to integer
+                    purchase_payload["amount"] = int(validated_data['amount'])
+
+                # Make purchase request
+                purchase_url = f"{settings.YANGA_API_BASE_URL}/bill-payments/pay"
+                print(f"Making purchase request to: {purchase_url}")  # Debug logging
+                print(f"Purchase payload: {purchase_payload}")  # Debug logging
+                purchase_response = requests.post(purchase_url, json=purchase_payload, headers=headers)
+                print(f"Purchase response status: {purchase_response.status_code}")  # Debug logging
+                print(f"Purchase response text: {purchase_response.text}")  # Debug logging
+
+                if purchase_response.status_code != 200:
+                    try:
+                        error_data = purchase_response.json()
+                        message = error_data.get('message', 'Failed to complete airtime purchase')
+                        return Response({'error': message}, status=status.HTTP_400_BAD_REQUEST)
+                    except ValueError:
+                        return Response({'error': 'Failed to complete airtime purchase'}, status=status.HTTP_400_BAD_REQUEST)
+                    
+                purchase_result = purchase_response.json()
+
+                if not purchase_result.get('success'):
+                    return Response({'error': purchase_result.get('message', 'Purchase failed')}, status=status.HTTP_400_BAD_REQUEST)
+
+                # Create transaction
+                transaction = Transaction.objects.create(
+                    user=request.user,
+                    transaction_type='debit',
+                    category='airtime',
+                    amount=validated_data['amount'],
+                    description=f"Airtime purchase for {validated_data['phone_number']}",
+                    metadata=purchase_result
+                )
+
+                # Create airtime details
+                AirtimeTransaction.objects.create(
+                    transaction=transaction,
+                    phone_number=validated_data['phone_number'],
+                    network=validated_data['network'],
+                    plan_name=validated_data.get('plan_name')
+                )
+
+                # Deduct from wallet
+                request.user.wallet_balance -= validated_data['amount']
+                request.user.save()
+
+                transaction.status = 'completed'
+                transaction.save()
+
+                return Response(TransactionSerializer(transaction).data, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    elif top_up_type == 'data':
+        plan = data.get('data_plan', '')
+        amount = data.get('amount')
+        product_code = data.get('product_code')
+        network = data.get('network')
+
+        # Ensure amount is properly handled
+        if amount is None and plan:
+            import re
+            match = re.search(r'₦(\d+)', plan)
+            if match:
+                amount = int(match.group(1))
+
+        data_copy = data.copy()
+        data_copy['data_plan'] = plan
+        data_copy['amount'] = amount
+
+        serializer = DataPurchaseSerializer(data=data_copy)
+        if serializer.is_valid():
+            try:
+                with db_transaction.atomic():
+                    validated_data = serializer.validated_data
+
+                    # Use the biller code from the network field (which is now the biller code)
+                    biller_code = network
+
+                    # For data bundles, product_code is always required since they have predefined products
+                    if not product_code:
+                        return Response({'error': 'Product code is required for data bundle purchase'}, status=status.HTTP_400_BAD_REQUEST)
+
+                    final_product_code = product_code
+
+                    # Prepare payload for purchase
+                    import uuid
+                    request_id = str(uuid.uuid4())
+                    purchase_payload = {
+                        "request_id": request_id,
+                        "biller_code": biller_code,
+                        "recipient": validated_data['phone_number'],
+                        "sync": False,
+                        "product_code": final_product_code
+                    }
+
+                    # Make purchase request
+                    purchase_url = f"{settings.YANGA_API_BASE_URL}/bill-payments/pay"
+                    purchase_response = requests.post(purchase_url, json=purchase_payload, headers=headers)
+                    if purchase_response.status_code != 200:
+                        return Response({'error': 'Failed to complete data bundle purchase'}, status=status.HTTP_502_BAD_GATEWAY)
+                    purchase_result = purchase_response.json()
+
+                    if not purchase_result.get('success'):
+                        return Response({'error': purchase_result.get('message', 'Purchase failed')}, status=status.HTTP_400_BAD_REQUEST)
+
+                    # Create transaction
+                    transaction = Transaction.objects.create(
+                        user=request.user,
+                        transaction_type='debit',
+                        category='data',
+                        amount=validated_data['amount'],
+                        description=f"Data purchase for {validated_data['phone_number']}",
+                        metadata=purchase_result
+                    )
+
+                    # Create data details
+                    DataTransaction.objects.create(
+                        transaction=transaction,
+                        phone_number=validated_data['phone_number'],
+                        network=validated_data['network'],
+                        data_plan=validated_data['data_plan'],
+                        validity="30 days"  # Placeholder
+                    )
+
+                    # Deduct from wallet
+                    request.user.wallet_balance -= validated_data['amount']
+                    request.user.save()
+
+                    transaction.status = 'completed'
+                    transaction.save()
+
+                    return Response(TransactionSerializer(transaction).data, status=status.HTTP_201_CREATED)
+
+            except Exception as e:
+                return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    else:
+        return Response({'error': 'Invalid top-up type'}, status=status.HTTP_400_BAD_REQUEST)
