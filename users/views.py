@@ -4,16 +4,39 @@ from django.contrib.auth import login, logout
 from django.contrib.auth.decorators import login_required
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_protect
-from django.shortcuts import render
-from django.http import JsonResponse
+from django.shortcuts import render, redirect, reverse
+from django.http import JsonResponse, HttpResponse
 from django.conf import settings
+from django.contrib import messages
+from django.contrib.messages import get_messages
+from django.utils.http import urlsafe_base64_decode
+from django.utils.encoding import force_str
+from django.contrib.auth.tokens import default_token_generator
 import requests
-from .models import CustomUser, BankAccount, VirtualAccount
+from django.conf import settings
+import logging
+import string
+from .models import CustomUser, BankAccount, VirtualAccount, PasswordResetToken
 from .serializers import CustomUserSerializer, BankAccountSerializer, VirtualAccountSerializer
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework import status
+from django.core.mail import send_mail
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
+from django.utils import timezone
+from datetime import timedelta
+import secrets
+import string
 import json
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
+from django.utils.encoding import force_bytes, force_str
+from django.contrib.auth.tokens import default_token_generator
+from django.contrib.auth.hashers import make_password
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 def home_view(request):
     """
@@ -69,12 +92,44 @@ def verify_bank_account(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
+@login_required
+def bank_verification_view(request):
+    """
+    Bank account verification page view.
+    """
+    context = {
+        'user': request.user,
+        'bank_accounts': request.user.bankaccount_set.all(),
+        'verifications': BankAccountVerification.objects.filter(user=request.user)
+    }
+    return render(request, 'users/bank_verification.html', context)
+
 def dashboard_view(request):
+    """
+    Dashboard view for authenticated users.
+    """
     if not request.user.is_authenticated:
         return redirect('login')
     
+    # Get user's verified bank account
+    bank_account = None
+    if hasattr(request.user, 'bank_verifications'):
+        # First try to get the primary verified account
+        bank_account = request.user.bank_verifications.filter(
+            status='verified',
+            is_primary=True
+        ).first()
+        
+        # If no primary, get any verified account
+        if not bank_account:
+            bank_account = request.user.bank_verifications.filter(
+                status='verified'
+            ).first()
+    
     context = {
-        'paystack_public_key': settings.PAYSTACK_PUBLIC_KEY
+        'paystack_public_key': settings.PAYSTACK_PUBLIC_KEY,
+        'bank_account': bank_account,
+        'virtual_account': getattr(request.user, 'virtual_account', None)
     }
     return render(request, 'users/dashboard.html', context)
 
@@ -254,6 +309,276 @@ def confirm_payment_sent(request):
             'error': f'Error processing payment: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+# Set up logging
+logger = logging.getLogger(__name__)
+
+def password_reset_request(request):
+    """
+    Handle password reset request. Shows a form for email input and processes the form submission.
+    Handles both form submissions and JSON API requests.
+    """
+    logger.info(f"Password reset request received. Method: {request.method}, Content-Type: {request.content_type}")
+    
+    if request.method == 'GET':
+        logger.debug("Serving password reset form")
+        return render(request, 'users/forgot_password.html')
+    
+    # Handle POST request
+    try:
+        # Check if the request is JSON
+        if request.content_type == 'application/json':
+            logger.debug("Processing JSON request")
+            try:
+                data = json.loads(request.body)
+                email = data.get('email')
+                logger.debug(f"Received email from JSON: {email}")
+            except json.JSONDecodeError as e:
+                logger.error(f"JSON decode error: {str(e)}")
+                return JsonResponse({'error': 'Invalid JSON'}, status=400)
+        else:
+            # Regular form submission
+            email = request.POST.get('email')
+            logger.debug(f"Received email from form: {email}")
+        
+        if not email:
+            logger.warning("No email provided in the request")
+            if request.content_type == 'application/json':
+                return JsonResponse({'error': 'Email is required'}, status=400)
+            messages.error(request, 'Email is required')
+            return render(request, 'users/forgot_password.html')
+        
+        try:
+            logger.debug(f"Looking up user with email: {email}")
+            user = CustomUser.objects.get(email=email)
+            logger.debug(f"Found user: {user.username} (ID: {user.id})")
+            
+            # Generate a token
+            token = default_token_generator.make_token(user)
+            uid = urlsafe_base64_encode(force_bytes(user.pk))
+            logger.debug(f"Generated token for user {user.id}")
+            
+            # Create reset URL - using the backend URL since we're handling the reset form in Django
+            reset_url = request.build_absolute_uri(
+                reverse('password_reset_confirm', kwargs={'uidb64': uid, 'token': token})
+            )
+            logger.debug(f"Reset URL: {reset_url}")
+            
+            # Prepare email content
+            subject = 'Password Reset Request'
+            email_context = {
+                'user': user,
+                'reset_url': reset_url,
+                'expiry_hours': 24
+            }
+            
+            logger.debug("Rendering email template")
+            html_message = render_to_string('users/emails/password_reset_email.html', email_context)
+            plain_message = strip_tags(html_message)
+            
+            logger.info(f"Sending password reset email to {user.email}")
+            try:
+                send_mail(
+                    subject=subject,
+                    message=plain_message,
+                    html_message=html_message,
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[user.email],
+                    fail_silently=False,
+                )
+            except Exception as e:
+                logger.error(f"Failed to send password reset email: {str(e)}", exc_info=True)
+                if request.content_type == 'application/json':
+                    return JsonResponse(
+                        {'error': 'Failed to send password reset email. Please try again later.'},
+                        status=500
+                    )
+                messages.error(request, 'Failed to send password reset email. Please try again.')
+                return render(request, 'users/forgot_password.html')
+            logger.info("Password reset email sent successfully")
+            
+            # Return appropriate response based on request type
+            success_message = 'If an account exists with this email, a password reset link has been sent.'
+            logger.info(success_message)
+            
+            if request.content_type == 'application/json':
+                return JsonResponse(
+                    {'message': success_message},
+                    status=200
+                )
+            messages.success(request, success_message)
+            return render(request, 'users/forgot_password.html')
+            
+        except CustomUser.DoesNotExist:
+            # Don't reveal that the user doesn't exist for security reasons
+            logger.warning(f"Password reset requested for non-existent email: {email}")
+            security_message = 'If an account exists with this email, a password reset link has been sent.'
+            
+            if request.content_type == 'application/json':
+                return JsonResponse(
+                    {'message': security_message},
+                    status=200
+                )
+            messages.success(request, security_message)
+            return render(request, 'users/forgot_password.html')
+        
+        except Exception as e:
+            error_msg = f"Error in password reset process: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            
+            if request.content_type == 'application/json':
+                return JsonResponse(
+                    {'error': 'An error occurred while processing your request. Please try again later.'},
+                    status=500
+                )
+            messages.error(request, 'An error occurred while processing your request. Please try again later.')
+            return render(request, 'users/forgot_password.html')
+
+    except Exception as e:
+        if request.content_type == 'application/json':
+            return JsonResponse(
+                {'error': 'An error occurred while processing your request. Please try again later.'},
+                status=500
+            )
+        messages.error(request, 'An error occurred while processing your request. Please try again later.')
+        return render(request, 'users/forgot_password.html')
+
+def password_reset_confirm(request, uidb64=None, token=None):
+    """
+    Handle password reset confirmation with the new password.
+    """
+    # Handle GET request - show the password reset form
+    if request.method == 'GET':
+        if not uidb64 or not token:
+            messages.error(request, 'Invalid password reset link.')
+            return redirect('login')
+            
+        try:
+            # Verify the token and uidb64
+            uid = force_str(urlsafe_base64_decode(uidb64))
+            user = CustomUser.objects.get(pk=uid)
+            
+            if not default_token_generator.check_token(user, token):
+                messages.error(request, 'The password reset link is invalid or has expired.')
+                return redirect('login')
+                
+            return render(request, 'users/password_reset_confirm.html', {
+                'uidb64': uidb64,
+                'token': token,
+                'validlink': True
+            })
+            
+        except (TypeError, ValueError, OverflowError, CustomUser.DoesNotExist) as e:
+            logger.error(f'Error in password reset confirmation: {str(e)}')
+            messages.error(request, 'The password reset link is invalid or has expired.')
+            return redirect('login')
+    
+    # Handle POST request - process the form submission
+    elif request.method == 'POST':
+        try:
+            # Check if it's a JSON request
+            if request.headers.get('Content-Type') == 'application/json':
+                data = json.loads(request.body)
+                uidb64 = data.get('uidb64')
+                token = data.get('token')
+                new_password1 = data.get('new_password1')
+                new_password2 = data.get('new_password2')
+                is_json = True
+            else:
+                uidb64 = request.POST.get('uidb64')
+                token = request.POST.get('token')
+                new_password1 = request.POST.get('new_password1')
+                new_password2 = request.POST.get('new_password2')
+                is_json = False
+            
+            # Validate required fields
+            if not all([uidb64, token, new_password1, new_password2]):
+                error_msg = 'All fields are required.'
+                if is_json:
+                    return JsonResponse({'error': error_msg}, status=400)
+                messages.error(request, error_msg)
+                return render(request, 'users/password_reset_confirm.html', {
+                    'uidb64': uidb64,
+                    'token': token,
+                    'validlink': True
+                })
+            
+            # Validate password match
+            if new_password1 != new_password2:
+                error_msg = 'Passwords do not match.'
+                if is_json:
+                    return JsonResponse({'error': error_msg}, status=400)
+                messages.error(request, error_msg)
+                return render(request, 'users/password_reset_confirm.html', {
+                    'uidb64': uidb64,
+                    'token': token,
+                    'validlink': True
+                })
+            
+            # Validate password strength
+            if len(new_password1) < 8 or not any(char.isdigit() for char in new_password1) or not any(char in string.punctuation for char in new_password1):
+                error_msg = 'Password must be at least 8 characters long and include numbers and special characters.'
+                if is_json:
+                    return JsonResponse({'error': error_msg}, status=400)
+                messages.error(request, error_msg)
+                return render(request, 'users/password_reset_confirm.html', {
+                    'uidb64': uidb64,
+                    'token': token,
+                    'validlink': True
+                })
+            
+            try:
+                # Decode user ID
+                uid = force_str(urlsafe_base64_decode(uidb64))
+                user = CustomUser.objects.get(pk=uid)
+                
+                # Verify token
+                if not default_token_generator.check_token(user, token):
+                    error_msg = 'The password reset link is invalid or has expired.'
+                    if is_json:
+                        return JsonResponse({'error': error_msg}, status=400)
+                    messages.error(request, error_msg)
+                    return redirect('login')
+                
+                # Update password
+                user.set_password(new_password1)
+                user.save()
+                
+                success_msg = 'Your password has been reset successfully. You can now log in with your new password.'
+                if is_json:
+                    return JsonResponse({'success': success_msg}, status=200)
+                    
+                messages.success(request, success_msg)
+                return redirect('login')
+                
+            except (TypeError, ValueError, OverflowError, CustomUser.DoesNotExist) as e:
+                logger.error(f'Error in password reset: {str(e)}')
+                error_msg = 'The password reset link is invalid or has expired.'
+                if is_json:
+                    return JsonResponse({'error': error_msg}, status=400)
+                messages.error(request, error_msg)
+                return redirect('login')
+                
+        except json.JSONDecodeError:
+            error_msg = 'Invalid JSON data'
+            if is_json:
+                return JsonResponse({'error': error_msg}, status=400)
+            messages.error(request, error_msg)
+            return redirect('login')
+            
+        except Exception as e:
+            logger.error(f'Unexpected error in password reset: {str(e)}')
+            error_msg = 'An error occurred while processing your request. Please try again.'
+            if is_json:
+                return JsonResponse({'error': error_msg}, status=500)
+            messages.error(request, error_msg)
+            return redirect('login')
+    
+    # If not GET or POST, redirect to login
+    return redirect('login')
+    
+    # If not GET or POST, redirect to login
+    return redirect('login')
+
 @api_view(['POST'])
 @permission_classes([permissions.AllowAny])
 def register_user(request):
@@ -295,20 +620,8 @@ def logout_user(request):
 @permission_classes([permissions.IsAuthenticated])
 def user_dashboard(request):
     user = request.user
-    data = {
+    return Response({
         'user': CustomUserSerializer(user).data,
         'wallet_balance': user.wallet_balance,
-        'kyc_verified': user.kyc_verified,
-        'points': user.points
-    }
-    return Response(data, status=status.HTTP_200_OK)
+    })
 
-from django.conf import settings
-
-@login_required
-def dashboard_view(request):
-    context = {
-        'user': request.user,
-        'paystack_public_key': settings.PAYSTACK_PUBLIC_KEY
-    }
-    return render(request, 'users/dashboard.html', context)

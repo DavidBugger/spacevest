@@ -1,0 +1,117 @@
+{% extends 'users/dashboard.html' %}
+
+{% block content %}
+<div class="page-section" id="page-bank-verification">
+    <div class="flex justify-between items-center mb-6">
+        <h2 class="text-2xl font-bold">Bank Account Verification</h2>
+        <button onclick="showPage('app')" class="text-gray-400 hover:text-white">
+            <i class="fas fa-arrow-left"></i> Back to Dashboard
+        </button>
+    </div>
+
+    <div class="bg-gray-800 rounded-2xl p-6 mb-6">
+        <div class="mb-6">
+            <h3 class="text-lg font-semibold mb-4">Add New Bank Account</h3>
+            <form id="bank-verification-form" class="space-y-4">
+                {% csrf_token %}
+                
+                <div>
+                    <label for="bank-select" class="block text-sm font-medium text-gray-300 mb-2">Select Bank</label>
+                    <select id="bank-select" name="bank_code" required
+                            class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 text-white">
+                        <option value="">Loading banks...</option>
+                    </select>
+                </div>
+                
+                <div>
+                    <label for="account-number" class="block text-sm font-medium text-gray-300 mb-2">Account Number</label>
+                    <input type="text" id="account-number" name="account_number" required
+                           placeholder="Enter your account number"
+                           class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 text-white"
+                           maxlength="10" pattern="\d{10}">
+                    <p class="mt-1 text-xs text-gray-400">Enter your 10-digit account number</p>
+                </div>
+                
+                <div id="verification-result"></div>
+                
+                <button type="button" id="verify-account"
+                        class="w-full py-3 px-4 bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-semibold rounded-lg transition-colors duration-200 flex items-center justify-center">
+                    <span id="verification-spinner" class="hidden mr-2">
+                        <i class="fas fa-spinner fa-spin"></i>
+                    </span>
+                    Verify Account
+                </button>
+            </form>
+        </div>
+        
+        <div>
+            <h3 class="text-lg font-semibold mb-4">Your Bank Accounts</h3>
+            <div id="bank-accounts-list" class="space-y-3">
+                <!-- Bank accounts will be loaded here -->
+                <div class="text-center py-4 text-gray-400">
+                    <i class="fas fa-university text-2xl mb-2"></i>
+                    <p>No bank accounts added yet</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="bg-gray-800 rounded-2xl p-6">
+        <h3 class="text-lg font-semibold mb-4">Why Verify Your Bank Account?</h3>
+        <ul class="space-y-3 text-gray-300">
+            <li class="flex items-start">
+                <i class="fas fa-check-circle text-green-400 mt-1 mr-2"></i>
+                <span>Securely link your bank account for withdrawals</span>
+            </li>
+            <li class="flex items-start">
+                <i class="fas fa-check-circle text-green-400 mt-1 mr-2"></i>
+                <span>Faster withdrawal processing</span>
+            </li>
+            <li class="flex items-start">
+                <i class="fas fa-check-circle text-green-400 mt-1 mr-2"></i>
+                <span>Enhanced security for your transactions</span>
+            </li>
+        </ul>
+    </div>
+</div>
+
+<!-- Bank Account Template (Hidden) -->
+<template id="bank-account-template">
+    <div class="bg-gray-700 rounded-xl p-4 flex items-center justify-between">
+        <div class="flex items-center">
+            <div class="w-10 h-10 rounded-full bg-yellow-500/20 flex items-center justify-center mr-3">
+                <i class="fas fa-university text-yellow-400"></i>
+            </div>
+            <div>
+                <h4 class="font-medium text-white">{accountName}</h4>
+                <p class="text-sm text-gray-400">{bankName} ••••{lastFour}</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-2">
+            {primaryBadge}
+            <button class="text-red-400 hover:text-red-300 p-1" data-action="remove" data-id="{id}">
+                <i class="fas fa-trash"></i>
+            </button>
+        </div>
+    </div>
+</template>
+
+<!-- Primary Badge Template -->
+<template id="primary-badge-template">
+    <span class="bg-green-500/20 text-green-400 text-xs px-2 py-1 rounded-full">
+        Primary
+    </span>
+</template>
+
+<!-- Make Primary Button Template -->
+<template id="make-primary-template">
+    <button class="text-gray-400 hover:text-yellow-400 text-sm" data-action="make-primary" data-id="{id}">
+        Make Primary
+    </button>
+</template>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/bank-verification.js' %}"></script>
+{% endblock %}

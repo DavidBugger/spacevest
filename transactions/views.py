@@ -1,11 +1,16 @@
+from django.conf import settings
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from django.db import transaction as db_transaction
 from django.contrib.auth import get_user_model
-from django.conf import settings
 import requests
+from requests.adapters import HTTPAdapter
 import uuid
+import time
+import random
+from datetime import timedelta
+from urllib3.util.retry import Retry
 from .models import Transaction, TransactionFee, CryptoTransaction, AirtimeTransaction, DataTransaction
 from .serializers import (
     TransactionSerializer, CreateTransactionSerializer, TransferSerializer,
@@ -293,59 +298,90 @@ def get_billers(request, category):
     """
     headers = {
         "accept": "application/json",
-        "Authorization": f"Bearer {settings.YANGA_API_KEY}"
+        "Authorization": f"Bearer {settings.YANGA_API_KEY}",
+        "User-Agent": "SpaceVest/1.0 (https://spacevest.com.ng; support@spacevest.com.ng)",
+        "X-Requested-With": "XMLHttpRequest",
+        "Referer": "https://spacevest.com.ng"
     }
 
     # Map frontend category to Yanga API category
-    api_category = category
-    if category == 'data_bundle':
-        api_category = 'data_bundle'
+    api_category = 'data_bundle' if category == 'data_bundle' else category
 
+    # Configure session with retry strategy
+    session = requests.Session()
+    retry_strategy = Retry(
+        total=3,
+        backoff_factor=1,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=["GET", "POST"]
+    )
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    
     try:
         url = f"{settings.YANGA_API_BASE_URL}/bill-payments/billers/{api_category}"
-        response = requests.get(url, headers=headers)
+        print(f"Making request to: {url}")  # Log the URL being called
+        
+        response = session.get(url, headers=headers, timeout=10)
+        print(f"Response status: {response.status_code}")  # Log response status
+        
+        response.raise_for_status()  # Raise HTTPError for bad responses
+        
+        data = response.json()
+        print(f"Yanga API response for {api_category}: {data}")  # Debug logging
 
-        if response.status_code == 200:
-            data = response.json()
-            print(f"Yanga API response for {api_category}: {data}")  # Debug logging
-
-            if data.get('success'):
-                billers_data = data['data']
-                # Ensure billers_data has the expected structure
-                if isinstance(billers_data, dict) and 'billers' in billers_data:
-                    billers_list = billers_data['billers']
-                elif isinstance(billers_data, list):
-                    billers_list = billers_data
-                else:
-                    billers_list = billers_data
-
-                # Use the actual biller codes from Yanga API response
-                transformed_billers = []
-                for biller in billers_list:
-                    if isinstance(biller, dict):
-                        # Use the actual biller codes from Yanga API
-                        biller_code = biller.get('code', '')
-                        biller_name = biller.get('name', '')
-                        has_products = biller.get('has_products', False)
-
-                        transformed_billers.append({
-                            'code': biller_code,
-                            'name': biller_name,
-                            'has_products': has_products,
-                            'minimum': biller.get('minimum'),
-                            'maximum': biller.get('maximum'),
-                            'category': biller.get('category', api_category)
-                        })
-
-                return Response({'billers': transformed_billers}, status=status.HTTP_200_OK)
+        if not isinstance(data, dict):
+            raise ValueError(f"Expected dict response, got {type(data).__name__}")
+            
+        if data.get('success'):
+            billers_data = data.get('data', {})
+            # Ensure billers_data has the expected structure
+            if isinstance(billers_data, dict) and 'billers' in billers_data:
+                billers_list = billers_data['billers']
+            elif isinstance(billers_data, list):
+                billers_list = billers_data
             else:
-                return Response({'error': data.get('message', 'No billers found for this category')}, status=status.HTTP_404_NOT_FOUND)
+                billers_list = billers_data if billers_data else []
+
+            # Use the actual biller codes from Yanga API response
+            transformed_billers = []
+            for biller in billers_list:
+                if isinstance(biller, dict):
+                    # Use the actual biller codes from Yanga API
+                    biller_code = biller.get('code', '')
+                    biller_name = biller.get('name', '')
+                    has_products = biller.get('has_products', False)
+
+                    transformed_billers.append({
+                        'code': biller_code,
+                        'name': biller_name,
+                        'has_products': has_products,
+                        'minimum': biller.get('minimum'),
+                        'maximum': biller.get('maximum'),
+                        'category': biller.get('category', api_category)
+                    })
+
+            return Response({'billers': transformed_billers}, status=status.HTTP_200_OK)
         else:
-            print(f"Yanga API error for {api_category}: {response.status_code} - {response.text}")  # Debug logging
-            return Response({'error': f'No billers found for this category ({response.status_code})'}, status=status.HTTP_404_NOT_FOUND)
+            error_msg = data.get('message', f'No billers found for this category ({response.status_code})')
+            print(f"Yanga API error for {api_category}: {response.status_code} - {response.text}")
+            return Response({'error': error_msg}, status=status.HTTP_404_NOT_FOUND)
+    except requests.exceptions.RequestException as e:
+        error_msg = f"Request error in get_billers for {api_category}: {str(e)}"
+        print(error_msg)
+        return Response({'error': 'Failed to fetch billers. Please try again later.', 'details': str(e)}, 
+                       status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    except ValueError as e:
+        error_msg = f"Invalid response format in get_billers for {api_category}: {str(e)}"
+        print(error_msg)
+        return Response({'error': 'Invalid response from service provider', 'details': str(e)},
+                       status=status.HTTP_502_BAD_GATEWAY)
     except Exception as e:
-        print(f"Exception in get_billers for {api_category}: {str(e)}")  # Debug logging
-        return Response({'error': 'No billers found for this category'}, status=status.HTTP_404_NOT_FOUND)
+        error_msg = f"Unexpected error in get_billers for {api_category}: {str(e)}"
+        print(error_msg)
+        return Response({'error': 'An unexpected error occurred', 'details': str(e)},
+                       status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
@@ -355,51 +391,84 @@ def get_products(request, biller_code):
     """
     headers = {
         "accept": "application/json",
-        "Authorization": f"Bearer {settings.YANGA_API_KEY}"
+        "Authorization": f"Bearer {settings.YANGA_API_KEY}",
+        "User-Agent": "SpaceVest/1.0 (https://spacevest.com.ng; support@spacevest.com.ng)",
+        "X-Requested-With": "XMLHttpRequest",
+        "Referer": "https://spacevest.com.ng"
     }
 
     # Use the actual biller codes from Yanga API
     api_biller_code = biller_code
 
+    # Configure session with retry strategy
+    session = requests.Session()
+    retry_strategy = Retry(
+        total=3,
+        backoff_factor=1,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=["GET", "POST"]
+    )
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    
     try:
         url = f"{settings.YANGA_API_BASE_URL}/bill-payments/products/{api_biller_code}"
-        response = requests.get(url, headers=headers)
+        print(f"Making request to: {url}")  # Log the URL being called
+        
+        response = session.get(url, headers=headers, timeout=10)
+        print(f"Response status: {response.status_code}")  # Log response status
+        
+        response.raise_for_status()  # Raise HTTPError for bad responses
+        
+        data = response.json()
+        print(f"Yanga API products response for {api_biller_code}: {data}")
 
-        if response.status_code == 200:
-            data = response.json()
-            print(f"Yanga API products response for {api_biller_code}: {data}")  # Debug logging
-
-            if data.get('success'):
-                products_data = data['data']
-                # Ensure products_data has the expected structure
-                if isinstance(products_data, dict) and 'products' in products_data:
-                    products_list = products_data['products']
-                elif isinstance(products_data, list):
-                    products_list = products_data
-                else:
-                    products_list = products_data
-
-                # Transform products to ensure consistent format
-                transformed_products = []
-                for product in products_list:
-                    if isinstance(product, dict):
-                        transformed_products.append({
-                            'code': product.get('code', ''),
-                            'name': product.get('name', ''),
-                            'amount': product.get('amount', 0),
-                            'description': product.get('description', ''),
-                            'validity': product.get('validity', ''),
-                        })
-
-                return Response({'products': transformed_products}, status=status.HTTP_200_OK)
+        if not isinstance(data, dict):
+            raise ValueError(f"Expected dict response, got {type(data).__name__}")
+            
+        if data.get('success'):
+            products_data = data.get('data', {})
+            # Ensure products_data has the expected structure
+            if isinstance(products_data, dict) and 'products' in products_data:
+                products_list = products_data['products']
+            elif isinstance(products_data, list):
+                products_list = products_data
             else:
-                return Response({'error': data.get('message', 'Failed to fetch products')}, status=status.HTTP_400_BAD_REQUEST)
+                products_list = products_data if products_data else []
+
+            # Transform products to ensure consistent format
+            transformed_products = []
+            for product in products_list:
+                if isinstance(product, dict):
+                    transformed_products.append({
+                        'code': product.get('code', ''),
+                        'name': product.get('name', ''),
+                        'amount': product.get('amount', 0),
+                        'description': product.get('description', ''),
+                        'validity': product.get('validity', ''),
+                    })
+
+            return Response({'products': transformed_products}, status=status.HTTP_200_OK)
         else:
-            print(f"Yanga API products error for {api_biller_code}: {response.status_code} - {response.text}")  # Debug logging
-            return Response({'error': f'Failed to fetch products from external API ({response.status_code})'}, status=status.HTTP_502_BAD_GATEWAY)
+            error_msg = data.get('message', f'Failed to fetch products from external API ({response.status_code})')
+            print(f"Yanga API products error for {api_biller_code}: {response.status_code} - {response.text}")
+            return Response({'error': error_msg}, status=status.HTTP_400_BAD_REQUEST)
+    except requests.exceptions.RequestException as e:
+        error_msg = f"Request error in get_products for {api_biller_code}: {str(e)}"
+        print(error_msg)  # Debug logging
+        return Response({'error': 'Failed to fetch products. Please try again later.', 'details': str(e)}, 
+                       status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    except ValueError as e:
+        error_msg = f"Invalid response format in get_products for {api_biller_code}: {str(e)}"
+        print(error_msg)  # Debug logging
+        return Response({'error': 'Invalid response from service provider', 'details': str(e)},
+                       status=status.HTTP_502_BAD_GATEWAY)
     except Exception as e:
-        print(f"Exception in get_products for {api_biller_code}: {str(e)}")  # Debug logging
-        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        error_msg = f"Unexpected error in get_products for {api_biller_code}: {str(e)}"
+        print(error_msg)  # Debug logging
+        return Response({'error': 'An unexpected error occurred', 'details': str(e)},
+                       status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
@@ -407,13 +476,29 @@ def top_up(request):
     data = request.data
     top_up_type = data.get('type')
 
+    # Add a small random delay to avoid appearing automated
+    time.sleep(random.uniform(0.5, 1.5))
+
+
+
     print(f"Top-up request data: {data}")  # Debug logging
 
     headers = {
         "accept": "application/json",
-        "Authorization": f"Bearer {settings.YANGA_API_KEY}"
+        "Authorization": f"Bearer {settings.YANGA_API_KEY}",
+        "User-Agent": "SpaceVest/1.0 (https://spacevest.com.ng; support@spacevest.com.ng)"
+
     }
 
+     # Configure retry strategy
+    session = requests.Session()
+    retries = Retry(
+        total=3,
+        backoff_factor=1,
+        status_forcelist=[500, 502, 503, 504, 429]
+    )
+    session.mount('https://', HTTPAdapter(max_retries=retries))
+    
     if top_up_type == 'airtime':
         serializer = AirtimePurchaseSerializer(data=data)
         print(f"Airtime serializer data: {data}")  # Debug logging

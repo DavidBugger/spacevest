@@ -1,7 +1,6 @@
 from django.db import models
-from django.contrib.auth import get_user_model
-
-User = get_user_model()
+from django.conf import settings
+from django.utils.translation import gettext_lazy as _
 
 class Transaction(models.Model):
     TRANSACTION_TYPES = [
@@ -28,7 +27,7 @@ class Transaction(models.Model):
         ('bill_payment', 'Bill Payment'),
     ]
     
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='transactions')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='transactions')
     transaction_type = models.CharField(max_length=10, choices=TRANSACTION_TYPES)
     category = models.CharField(max_length=20, choices=TRANSACTION_CATEGORIES)
     amount = models.DecimalField(max_digits=15, decimal_places=2)
@@ -38,7 +37,7 @@ class Transaction(models.Model):
     metadata = models.JSONField(default=dict, blank=True)
     
     # For transfers
-    recipient = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='received_transactions')
+    recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='received_transactions')
     recipient_email = models.EmailField(blank=True, null=True)
     
     # For bank transactions

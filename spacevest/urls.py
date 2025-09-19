@@ -17,7 +17,10 @@ Including another URLconf
 
 from django.contrib import admin
 from django.urls import path, include
-from users.views import dashboard_view, home_view, login_view, register_view
+from django.conf import settings
+from django.conf.urls.static import static
+from users.views import dashboard_view, home_view, login_view, register_view, password_reset_confirm
+from django.contrib.auth import views as auth_views
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -29,4 +32,12 @@ urlpatterns = [
     path('dashboard/', dashboard_view, name='dashboard'),
     path('login/', login_view, name='login'),
     path('register/', register_view, name='register'),
-]
+    
+    # Password reset URLs
+    path('reset-password/<str:uidb64>/<str:token>/', password_reset_confirm, name='password_reset_confirm'),
+    
+    # Password reset complete view
+    path('reset/done/', auth_views.PasswordResetCompleteView.as_view(
+        template_name='users/password_reset_complete.html'
+    ), name='password_reset_complete'),
+] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

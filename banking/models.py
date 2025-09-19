@@ -1,14 +1,16 @@
 from django.db import models
-from django.contrib.auth import get_user_model
-
-User = get_user_model()
+from django.conf import settings
+from django.utils.translation import gettext_lazy as _
 
 class Bank(models.Model):
     name = models.CharField(max_length=255)
     code = models.CharField(max_length=10, unique=True)
     country = models.CharField(max_length=100, default='Nigeria')
+    currency = models.CharField(max_length=3, default='NGN')
+    type = models.CharField(max_length=20, default='nuban')
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
         ordering = ['name']
@@ -23,11 +25,13 @@ class BankAccountVerification(models.Model):
         ('failed', 'Failed'),
     ]
     
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='bank_verifications')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='bank_verifications')
+    bank = models.ForeignKey('Bank', on_delete=models.CASCADE, related_name='verifications', null=True)
     account_number = models.CharField(max_length=20)
     bank_code = models.CharField(max_length=10)
     account_name = models.CharField(max_length=255, blank=True, null=True)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
+    is_primary = models.BooleanField(default=False)
     verification_reference = models.CharField(max_length=255, blank=True, null=True)
     metadata = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -58,7 +62,7 @@ class VirtualAccountRequest(models.Model):
         ('failed', 'Failed'),
     ]
     
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='virtual_account_requests')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='virtual_account_requests')
     provider = models.ForeignKey(VirtualAccountProvider, on_delete=models.CASCADE)
     account_number = models.CharField(max_length=20, blank=True, null=True)
     account_name = models.CharField(max_length=255, blank=True, null=True)
