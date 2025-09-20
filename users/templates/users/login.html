@@ -90,9 +90,18 @@
                 <label class="block text-gray-400 text-sm mb-2">Username</label>
                 <input type="text" name="username" required class="form-input w-full p-3 rounded-lg" placeholder="Enter your username">
             </div>
-            <div class="text-left">
+            <div class="text-left relative">
                 <label class="block text-gray-400 text-sm mb-2">Password</label>
-                <input type="password" name="password" required class="form-input w-full p-3 rounded-lg" placeholder="Enter your password">
+                <div class="relative">
+                    <input type="password" name="password" id="password" required 
+                           class="form-input w-full p-3 pr-10 rounded-lg" 
+                           placeholder="Enter your password">
+                    <button type="button" id="togglePassword" 
+                            class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-300"
+                            aria-label="Toggle password visibility">
+                        <i class="far fa-eye" id="eyeIcon"></i>
+                    </button>
+                </div>
             </div>
             <button type="submit" class="submit-btn w-full p-4 rounded-lg font-bold text-lg">
                 Sign In
@@ -127,6 +136,26 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            // Password visibility toggle
+            const togglePassword = document.getElementById('togglePassword');
+            const password = document.getElementById('password');
+            const eyeIcon = document.getElementById('eyeIcon');
+            
+            togglePassword.addEventListener('click', function () {
+                // Toggle the type attribute
+                const type = password.getAttribute('type') === 'password' ? 'text' : 'password';
+                password.setAttribute('type', type);
+                
+                // Toggle the eye icon
+                if (type === 'password') {
+                    eyeIcon.classList.remove('fa-eye-slash');
+                    eyeIcon.classList.add('fa-eye');
+                } else {
+                    eyeIcon.classList.remove('fa-eye');
+                    eyeIcon.classList.add('fa-eye-slash');
+                }
+            });
+            
             const loader = document.getElementById('app-loader');
             const loginForm = document.getElementById('login-form');
             const authErrorEl = document.getElementById('auth-error');

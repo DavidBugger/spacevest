@@ -5,3 +5,13 @@
 5. 
 
 python manage.py makemigrations users --name add_is_verified_to_bankaccount --empty
+
+
+ALTER TABLE banking_bank ADD COLUMN currency VARCHAR(3) DEFAULT 'NGN' AFTER country
+
+"ALTER TABLE banking_bank ADD COLUMN type VARCHAR(20) DEFAULT 'nuban' AFTER currency;",
+    "SELECT 1"
+
+    "ALTER TABLE banking_bank ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;",
+    "SELECT 1"
+   

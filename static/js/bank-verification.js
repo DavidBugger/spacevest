@@ -216,6 +216,11 @@ class BankVerification {
             // Reload the bank accounts list
             await this.loadUserBankAccounts();
             
+            // Reload the page after 2 seconds to reflect changes
+            setTimeout(() => {
+                window.location.reload();
+            }, 2000);
+            
         } catch (error) {
             console.error('Verification error:', error);
             this.showError(error.message || 'Failed to verify account. Please check the details and try again.');
